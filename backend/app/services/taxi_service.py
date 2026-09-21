@@ -40,6 +40,8 @@ class TaxiService:
         orig = runs.get(self._c, run_id)
         if not orig:
             raise ReversalError(404, "记录不存在")
+        if orig["kind"] != "fare":
+            raise ReversalError(400, "compare 记录不能冲正")
         if orig["reversed_by"] is not None:
             raise ReversalError(409, "该记录已被冲正，不能再次冲正")
         if distance_km is None and slow_min is None:
@@ -54,11 +56,6 @@ class TaxiService:
         if preview:
             return {"preview": True, "run_id": None, "reversal_of": run_id, **r}
         new_id = runs.insert_reversal(self._c, payload, r, run_id, orig["trip_id"])
-        self._c.execute(
-            "UPDATE calc_runs SET result_json=? WHERE id=?",
-            (json.dumps(r, ensure_ascii=False), run_id),
-        )
-        self._c.commit()
         return {"preview": False, "run_id": new_id, "reversal_of": run_id, **r}
     def dashboard(self):
         items = trips.list_all(self._c)

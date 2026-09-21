@@ -44,6 +44,46 @@ def test_commit_writes_new_row_and_marks_original(service_cls):
         assert json.loads(new["result_json"])["total"] == out["total"]
         assert out["distance_km"] == 6.0 and out["slow_min"] == 2.0
 
+def test_compare_run_cannot_reverse(service_cls):
+    with service_cls() as s:
+        rid = s.compare(5, 2, True)["run_id"]
+        before = _count(s)
+        from app.services.taxi_service import ReversalError
+        # 提交与预览都不允许，且不得写出新记录
+        for preview in (False, True):
+            with pytest.raises(ReversalError) as e:
+                s.reverse(rid, 6.0, None, preview)
+            assert e.value.status_code == 400
+        assert _count(s) == before
+
+def test_original_breakdown_preserved_after_commit(service_cls):
+    with service_cls() as s:
+        r0 = s.fare(5, 2, False, None, True)
+        rid = r0["run_id"]
+        out = s.reverse(rid, 8.0, None, False)
+        from app.repositories import runs
+        old_result = json.loads(runs.get(s._c, rid)["result_json"])
+        # 原记录的起步、里程、应付仍是冲正前写入时的那一版
+        assert old_result["start"] == r0["start"]
+        assert old_result["mileage"] == r0["mileage"]
+        assert old_result["total"] == r0["total"]
+        assert out["total"] != r0["total"]
+        # 新记录才是冲正后那一套
+        new_result = json.loads(runs.get(s._c, out["run_id"])["result_json"])
+        assert new_result["mileage"] == out["mileage"]
+        assert new_result["total"] == out["total"]
+
+def test_already_reversed_cannot_preview_again(service_cls):
+    with service_cls() as s:
+        rid = s.fare(5, 2, False, None, True)["run_id"]
+        s.reverse(rid, 6.0, None, False)
+        before = _count(s)
+        from app.services.taxi_service import ReversalError
+        with pytest.raises(ReversalError) as e:
+            s.reverse(rid, 7.0, None, True)
+        assert e.value.status_code == 409
+        assert _count(s) == before
+
 def test_already_reversed_cannot_reverse_again(service_cls):
     with service_cls() as s:
         rid = s.fare(5, 2, False, None, True)["run_id"]
