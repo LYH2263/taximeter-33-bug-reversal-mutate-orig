@@ -1,0 +1,17 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "9300:9300"
+    volumes:
+      - taximeter_data:/data
+    environment:
+      DATA_DIR: /data
+  frontend:
+    build: ./frontend
+    ports:
+      - "4300:80"
+    depends_on:
+      - backend
+volumes:
+  taximeter_data:
